@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartNet JSON Decryptor</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+<style>
+    body { background: #f0f2f5; }
+    .card { border-radius: 15px; }
+    .card-header { background: #0d6efd; color: #fff; border-top-left-radius: 15px; border-top-right-radius: 15px; }
+    .btn-primary:hover { background: #0b5ed7; }
+    .btn-success:hover { background: #198754; }
+    pre { background: #e9ecef; border-radius: 10px; padding: 15px; }
+    .section-title { font-weight: 600; color: #0d6efd; }
+</style>
+</head>
+<body>
+<div class="container py-5">
+
+    <div class="text-center mb-5">
+        <h1 class="fw-bold">SHIMUL AHMED</h1>
+        <p class="text-muted">AUTO DECRYPT.</p>
+    </div>
+
+    <!-- Upload File Section -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header"><i class="bi bi-upload"></i> Upload JSON File</div>
+        <div class="card-body">
+            <input type="file" id="fileInput" class="form-control mb-3">
+            <button class="btn btn-primary w-100 mb-2" onclick="decryptJSONFromFile()">ডিক্রিপ্ট করুন</button>
+        </div>
+    </div>
+
+    <!-- URL Section -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header"><i class="bi bi-link-45deg"></i> Or Use JSON File URL</div>
+        <div class="card-body">
+            <input type="text" id="urlInput" class="form-control mb-3" placeholder="Paste JSON URL here">
+            <button class="btn btn-primary w-100 mb-2" onclick="fetchAndDecrypt()">ডিক্রিপ্ট করুন</button>
+        </div>
+    </div>
+
+    <!-- Output Section -->
+    <div class="card shadow-sm">
+        <div class="card-header"><i class="bi bi-eye"></i> ডিক্রিপ্ট করা JSON</div>
+        <div class="card-body">
+            <pre id="output" style="max-height:400px; overflow:auto;"></pre>
+            <button class="btn btn-success w-100 mt-3" onclick="downloadJSON()">Download JSON</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const password = "digitel";
+const iv = CryptoJS.enc.Hex.parse('00000000000000000000000000000000');
+let decryptedData = null;
+
+// AES ডিক্রিপ্ট ফাংশন
+function decryptAES(ciphertextB64) {
+    try {
+        const ciphertext = CryptoJS.enc.Base64.parse(ciphertextB64);
+        const decrypted = CryptoJS.AES.decrypt(
+            {ciphertext: ciphertext},
+            CryptoJS.SHA256(password),
+            { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }
+        );
+        return decrypted.toString(CryptoJS.enc.Utf8) || ciphertextB64;
+    } catch(e) {
+        return ciphertextB64;
+    }
+}
+
+// File থেকে ডিক্রিপ্ট
+async function decryptJSONFromFile() {
+    const fileInput = document.getElementById("fileInput");
+    if (!fileInput.files.length) {
+        alert("ফাইল সিলেক্ট করুন!");
+        return;
+    }
+    const file = fileInput.files[0];
+    const text = await file.text();
+    let data;
+    try { data = JSON.parse(text); } 
+    catch (e) { alert("Invalid JSON File!"); return; }
+    processData(data);
+}
+
+// URL থেকে ডিক্রিপ্ট
+async function fetchAndDecrypt() {
+    const url = document.getElementById("urlInput").value.trim();
+    if (!url) { alert("URL দিন!"); return; }
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("URL fetch failed");
+        let encryptedText = (await response.text()).trim();
+
+        const decryptedText = decryptAES(encryptedText);
+        let data;
+        try { data = JSON.parse(decryptedText); } 
+        catch(e) { 
+            alert("ডিক্রিপ্ট করা ডাটা JSON নয়!"); 
+            decryptedData = decryptedText; 
+            document.getElementById("output").textContent = decryptedText; 
+            return; 
+        }
+        processData(data);
+    } catch(e) { alert("Error fetching or decrypting: " + e.message); }
+}
+
+// ডেটা প্রসেস এবং সব ফিল্ড ডিক্রিপ্ট
+function processData(data) {
+    const serverFields = ["V2rayID","ServerIP","ServerCloudFront","ServerHTTP","ProxyHost","Username","Password","sUdpObfs"];
+    const networkFields = ["NetworkPayload","SquidProxy","NetworkFrontQuery","NetworkBackQuery","SSLSNI"];
+    const otherFields = ["config_url","account_api","cloud_get_api","cloud_post_api","AppConfPass"];
+
+    if (data.Servers) for (let s of data.Servers) for (let f of serverFields) if(s[f]) s[f]=decryptAES(s[f]);
+    if (data.HTTPNetworks) for (let n of data.HTTPNetworks) for (let f of networkFields) if(n[f]) n[f]=decryptAES(n[f]);
+    for (let f of otherFields) if(data[f]) data[f]=decryptAES(data[f]);
+
+    decryptedData = data;
+    document.getElementById("output").textContent = JSON.stringify(data,null,2);
+}
+
+// Download JSON
+function downloadJSON() {
+    if (!decryptedData) { alert("প্রথমে ডিক্রিপ্ট করুন!"); return; }
+    const blob = new Blob([JSON.stringify(decryptedData,null,2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "smarnetvip.json";
+    a.click();
+    URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
